@@ -6,7 +6,7 @@ MyCloudAI Value Investment Tools is a local-first value investing workbench with
 
 Domain:
 
-https://value-investment-tools.mycloudai.org
+[https://value-investment-tools.mycloudai.org](https://value-investment-tools.mycloudai.org)
 
 The product combines valuation, financial health, growth quality, risk control, research workflows, a journal, and a portfolio tracker in one place, while also exposing discovery endpoints, tool schemas, and compute endpoints for programmatic use.
 

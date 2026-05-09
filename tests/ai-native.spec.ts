@@ -47,6 +47,38 @@ test('yaml compute api returns expected kelly result', async ({ request }) => {
   expect(resultYaml).toContain('20.0%');
 });
 
+test('monte carlo compute api accepts legacy alias field names', async ({ request }) => {
+  const response = await request.post('/api/tools/valuation/dcf-monte-carlo/compute.yaml', {
+    headers: {
+      'content-type': 'application/yaml',
+    },
+    data: [
+      'inputs:',
+      '  baseFcf: 11000',
+      '  growthRateMean: 8',
+      '  growthRateStd: 3',
+      '  waccMean: 12',
+      '  waccStd: 1.5',
+      '  terminalGrowthRate: 2.5',
+      '  netCash: 38620',
+      '  sharesOutstanding: 1423',
+      '  currentPrice: 98.78',
+      '  simulations: 10000',
+    ].join('\n'),
+  });
+
+  expect(response.ok()).toBeTruthy();
+  const resultYaml = await response.text();
+
+  expect(resultYaml).toContain('字段 growthRateMean 已映射为 growthMean。');
+  expect(resultYaml).toContain('字段 growthRateStd 已映射为 growthStd。');
+  expect(resultYaml).toContain('字段 simulations 已映射为 iterations。');
+  expect(resultYaml).toContain('growthMean: 8');
+  expect(resultYaml).toContain('growthStd: 3');
+  expect(resultYaml).toContain('iterations: 10000');
+  expect(resultYaml).toContain('value: 10,000');
+});
+
 test('tool page hides yaml ui from normal users while api remains available', async ({ page, request }) => {
   await page.goto('/risk/kelly');
 

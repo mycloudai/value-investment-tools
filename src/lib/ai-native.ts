@@ -10,6 +10,14 @@ export interface NormalizedToolInputs {
   warnings: string[];
 }
 
+const toolInputAliases: Record<string, Record<string, string>> = {
+  'dcf-monte-carlo': {
+    growthRateMean: 'growthMean',
+    growthRateStd: 'growthStd',
+    simulations: 'iterations',
+  },
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const safeString = (value: unknown) => String(value ?? '').trim();
@@ -74,16 +82,22 @@ export const normalizeToolInputs = (tool: ToolDefinition, payload: unknown): Nor
   const rawInputs = pickInputPayload(payload);
   const values = { ...defaults };
   const warnings: string[] = [];
+  const aliases = toolInputAliases[tool.slug] ?? {};
 
   tool.fields.forEach((field) => {
-    if (!(field.key in rawInputs)) {
+    const sourceKey = field.key in rawInputs ? field.key : Object.keys(aliases).find((alias) => aliases[alias] === field.key && alias in rawInputs);
+    if (!sourceKey) {
       return;
     }
 
-    const normalized = normalizeFieldValue(field, rawInputs[field.key]);
+    const normalized = normalizeFieldValue(field, rawInputs[sourceKey]);
     values[field.key] = normalized;
 
-    if (field.type === 'number' && typeof rawInputs[field.key] !== 'number' && safeString(rawInputs[field.key]) !== '') {
+    if (sourceKey !== field.key) {
+      warnings.push(`字段 ${sourceKey} 已映射为 ${field.key}。`);
+    }
+
+    if (field.type === 'number' && typeof rawInputs[sourceKey] !== 'number' && safeString(rawInputs[sourceKey]) !== '') {
       warnings.push(`字段 ${field.key} 已按数字解析。`);
     }
   });

@@ -6,7 +6,7 @@ MyCloudAI 价值投资工具是一个本地优先、同时可被 AI 直接调用
 
 域名：
 
-https://value-investment-tools.mycloudai.org
+[https://value-investment-tools.mycloudai.org](https://value-investment-tools.mycloudai.org)
 
 它把估值、财务健康、成长质量、风险控制、投资日志、持仓追踪和数据研究放进同一个站点，同时提供 AI 发现接口、schema 接口和计算接口，便于程序化接入。
 
@@ -61,9 +61,9 @@ curl https://value-investment-tools.mycloudai.org/api/tools/risk/kelly/schema.ya
 
 ```bash
 curl -X POST \
-	https://value-investment-tools.mycloudai.org/api/tools/risk/kelly/compute.yaml \
-	-H "Content-Type: application/yaml" \
-	--data-binary $'inputs:\n  winRate: 60\n  payoffRatio: 2\n'
+  https://value-investment-tools.mycloudai.org/api/tools/risk/kelly/compute.yaml \
+  -H "Content-Type: application/yaml" \
+  --data-binary $'inputs:\n  winRate: 60\n  payoffRatio: 2\n'
 ```
 
 ## FMP 研究包
