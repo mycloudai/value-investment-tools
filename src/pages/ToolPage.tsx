@@ -449,7 +449,7 @@ function PortfolioWorkbench() {
                             </button>
                           </div>
                         </div>
-                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                           <div>
                             <p className="text-sm text-slate-500">买入价</p>
                             <p className="mt-1 text-lg font-semibold text-ink">{formatDisplayCurrency(entry.buyPrice, displayCurrency)}</p>
