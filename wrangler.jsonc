@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "value-investment-tools",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-05-09",
+  "assets": {
+    "directory": "./.output/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  }
+}

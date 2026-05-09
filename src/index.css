@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #1d1d1f;
+  background: #f5f7fb;
+  font-family: 'SF Pro Text', system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(0, 102, 204, 0.16);
+}
+
+@layer components {
+  .shell {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .glass-panel {
+    @apply rounded-[28px] border border-white/60 bg-white/85 backdrop-blur;
+  }
+
+  .section-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.22em] text-action;
+  }
+
+  .section-heading {
+    @apply font-display text-4xl font-semibold tracking-[-0.04em] text-ink sm:text-5xl;
+  }
+
+  .body-copy {
+    @apply text-[17px] leading-7 text-slate-600;
+  }
+
+  .pill-button {
+    @apply inline-flex items-center justify-center rounded-full bg-action px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0071e3];
+  }
+
+  .ghost-button {
+    @apply inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-action transition hover:border-action/30 hover:bg-mist;
+  }
+
+  .panel-title {
+    @apply font-display text-[28px] font-semibold tracking-[-0.03em] text-ink;
+  }
+
+  .metric-card {
+    @apply rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/50;
+  }
+}
