@@ -7,10 +7,16 @@ interface ToolFormProps {
   onChange: (key: string, value: number | string) => void;
 }
 
-const amountKeyPattern = /(price|cash|fcf|value|income|earnings|dividend|debt|capital|asset|liabilit|equity|sales|revenue|expense|ebit|nopat|market)/i;
+const amountKeyPattern = /(price|cash|fcf|value|income|earnings|dividend|debt|capital|asset|liabilit|equity|sales|revenue|expense|ebit|nopat|market|eps|bvps|perShare)/i;
+const amountLabelPattern = /(现金|股价|每股|价值|营收|收入|利润|资本|负债|股息|FCF|EV|NOPAT|EPS|BVPS)/i;
+const multipleTokenPattern = /(倍数|p\/fcf|ev\/ebitda|ev\/ebit|ev\/nopat|price\/oe|multiple|(?:^|[^a-z])(pe|pb|ps)(?:$|[^a-z]))/i;
+const percentageTokenPattern = /百分比/i;
 const shareKeyPattern = /(shares|shareCount)/i;
+const shareLabelPattern = /(股数|总股数|总股|股份|股本)/i;
 
 const resolveFieldBadge = (field: InputField, displayCurrency: CurrencyCode) => {
+  const token = `${field.key} ${field.label} ${field.description}`;
+
   if (field.unit === '%') {
     return '单位：百分比 %';
   }
@@ -19,17 +25,24 @@ const resolveFieldBadge = (field: InputField, displayCurrency: CurrencyCode) => 
     return `单位：${field.unit}`;
   }
 
-  const token = `${field.key} ${field.label}`;
-  if (shareKeyPattern.test(field.key) || /股/.test(token)) {
-    return '单位：股；金额保持同数量级';
+  if (percentageTokenPattern.test(token)) {
+    return '单位：百分比 %';
   }
 
   if (/years/i.test(field.key) || /年/.test(field.label)) {
     return '单位：年';
   }
 
-  if (amountKeyPattern.test(field.key) || /(现金|股价|价值|营收|收入|利润|资本|负债|股息|FCF|EV|NOPAT)/.test(token)) {
+  if (multipleTokenPattern.test(token)) {
+    return '单位：倍';
+  }
+
+  if (amountKeyPattern.test(field.key) || amountLabelPattern.test(token)) {
     return `货币：${currencyLabels[displayCurrency]}`;
+  }
+
+  if (shareKeyPattern.test(field.key) || shareLabelPattern.test(token)) {
+    return '单位：股；金额保持同数量级';
   }
 
   return null;
@@ -60,7 +73,9 @@ export default function ToolForm({ displayCurrency, fields, values, onChange }: 
                 <p className="mt-1 text-[15px] leading-6 text-slate-500">{field.description}</p>
               </div>
               {badge ? (
-                <span className="rounded-full bg-mist px-3 py-1 text-sm font-medium text-action">{badge}</span>
+                <span className="rounded-full bg-mist px-3 py-1 text-sm font-medium text-action" data-testid={`field-badge-${field.key}`}>
+                  {badge}
+                </span>
               ) : null}
             </div>
             <div className="mt-4">

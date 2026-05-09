@@ -54,6 +54,27 @@ test('tool page sidebar sections are collapsed by default and can expand', async
   await expect(page.getByTestId('sidebar-section-summary-content')).toBeVisible();
 });
 
+test('unit badges classify currency shares multiples and percentages correctly', async ({ page }) => {
+  await page.goto('/valuation/graham-original');
+
+  await expect(page.getByTestId('field-badge-eps')).toContainText('货币：美元');
+  await expect(page.getByTestId('field-badge-bvps')).toContainText('货币：美元');
+  await expect(page.getByTestId('field-badge-currentPrice')).toContainText('货币：美元');
+
+  await page.goto('/valuation/multiples');
+
+  await expect(page.getByTestId('field-badge-targetPe')).toContainText('单位：倍');
+  await expect(page.getByTestId('field-badge-targetPriceOe')).toContainText('单位：倍');
+  await expect(page.getByTestId('field-badge-peersPriceOe')).toContainText('单位：倍');
+
+  await page.goto('/health/capital-allocation');
+
+  await expect(page.getByTestId('field-badge-roicSeries')).toContainText('单位：百分比 %');
+  await expect(page.getByTestId('field-badge-sharesSeries')).toContainText('单位：股；金额保持同数量级');
+  await expect(page.getByTestId('field-badge-dividendsSeries')).toContainText('货币：美元');
+  await expect(page.getByTestId('field-badge-fcfPerShareSeries')).toContainText('货币：美元');
+});
+
 test('three-stage dcf supports custom stage durations', async ({ page }) => {
   await page.goto('/valuation/dcf-three-stage');
 
