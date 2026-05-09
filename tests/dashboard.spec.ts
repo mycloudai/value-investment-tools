@@ -38,3 +38,17 @@ test('dashboard search also matches tool purpose and scenario', async ({ page })
   await expect(page.getByTestId('tool-card-z-score')).toBeVisible();
   await expect(page.getByTestId('tool-card-kelly')).toHaveCount(0);
 });
+
+test('dashboard search shows candidates and can jump directly to a tool', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByTestId('dashboard-search-input').fill('Kelly');
+
+  await expect(page.getByTestId('dashboard-search-suggestions')).toBeVisible();
+  await expect(page.getByTestId('search-suggestion-kelly')).toBeVisible();
+
+  await page.getByTestId('search-suggestion-kelly').click();
+
+  await expect(page).toHaveURL(/\/risk\/kelly$/);
+  await expect(page.getByRole('heading', { name: 'Kelly 公式仓位计算器' })).toBeVisible();
+});

@@ -2,13 +2,13 @@ import { ArrowRight, Database, NotebookPen, ShieldCheck } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import logo from '../../icons/mycloudai-small.png';
-import { featuredTools, toolCatalog, toolsByCategory } from '../lib/toolkit';
+import { categoryMeta, featuredTools, toolCatalog, toolsByCategory } from '../lib/toolkit';
 
 export default function DashboardPage() {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
+  const keyword = deferredQuery.trim().toLowerCase();
   const filteredTools = useMemo(() => {
-    const keyword = deferredQuery.trim().toLowerCase();
     if (!keyword) {
       return toolCatalog;
     }
@@ -17,7 +17,8 @@ export default function DashboardPage() {
       const searchableText = [tool.name, tool.shortName, tool.tagline, tool.purpose, tool.scenario].join(' ').toLowerCase();
       return searchableText.includes(keyword);
     });
-  }, [deferredQuery]);
+  }, [keyword]);
+  const searchSuggestions = useMemo(() => (keyword ? filteredTools.slice(0, 6) : []), [filteredTools, keyword]);
 
   return (
     <main>
@@ -57,13 +58,47 @@ export default function DashboardPage() {
             <p className="section-kicker">搜索工具</p>
             <h2 className="panel-title mt-2">按名称、用途或场景快速定位</h2>
           </div>
-          <input
-            className="w-full rounded-full border border-slate-200 bg-white px-6 py-4 text-base outline-none transition focus:border-action focus:ring-2 focus:ring-action/20 lg:max-w-xl"
-            placeholder="例如：DCF、F-Score、复利、敏感度"
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+            <div className="relative w-full lg:max-w-xl">
+              <input
+                className="w-full rounded-full border border-slate-200 bg-white px-6 py-4 text-base outline-none transition focus:border-action focus:ring-2 focus:ring-action/20"
+                data-testid="dashboard-search-input"
+                placeholder="例如：DCF、F-Score、复利、敏感度"
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              {keyword ? (
+                <div
+                  className="absolute inset-x-0 top-full z-20 mt-3 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.14)]"
+                  data-testid="dashboard-search-suggestions"
+                >
+                  {searchSuggestions.length ? (
+                    searchSuggestions.map((tool, index) => (
+                      <Link
+                        key={tool.id}
+                        className={`block px-6 py-4 transition hover:bg-slate-50 ${index < searchSuggestions.length - 1 ? 'border-b border-slate-100' : ''}`}
+                        data-testid={`search-suggestion-${tool.slug}`}
+                        to={tool.route}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-[0.2em] text-action">{categoryMeta[tool.category].label}</p>
+                            <h3 className="mt-2 truncate font-display text-2xl font-semibold tracking-[-0.04em] text-ink">{tool.shortName}</h3>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{tool.tagline}</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-500">{tool.purpose}</p>
+                          </div>
+                          <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-slate-300" />
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-6 py-5 text-sm text-slate-500" data-testid="search-suggestion-empty">
+                      没有找到匹配工具，请尝试更换关键词。
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
         </div>
       </section>
 

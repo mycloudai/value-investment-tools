@@ -44,7 +44,7 @@ export default function Layout() {
       <Outlet />
       <footer className="border-t border-slate-200 bg-white">
         <div className="shell flex flex-col gap-4 py-8 text-sm text-slate-500 lg:flex-row lg:items-center lg:justify-between">
-          <p>© {currentYear} MyCloudAI. All rights reserved.</p>
+          <p>© {currentYear} MyCloudAI GitHub Organization. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
             <a className="transition hover:text-action" href="/sitemap.xml" target="_blank" rel="noreferrer">
               Sitemap

@@ -25,6 +25,10 @@ test('api discovery exposes manifest, schema and sitemap', async ({ request }) =
   expect(sitemapResponse.ok()).toBeTruthy();
   const sitemapXml = await sitemapResponse.text();
   expect(sitemapXml).toContain('<loc>https://value-investment-tools.mycloudai.org/valuation/dcf-two-stage</loc>');
+
+  const sitemapHeadResponse = await request.fetch('/sitemap.xml', { method: 'HEAD' });
+  expect(sitemapHeadResponse.ok()).toBeTruthy();
+  expect(sitemapHeadResponse.headers()['content-type']).toContain('application/xml');
 });
 
 test('yaml compute api returns expected kelly result', async ({ request }) => {

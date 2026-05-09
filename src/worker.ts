@@ -18,24 +18,30 @@ interface Env {
   };
 }
 
+const isReadMethod = (method: string) => method === 'GET' || method === 'HEAD';
+
+const responseHeaders = (contentType: string, init: ResponseInit = {}) => ({
+  'content-type': contentType,
+  'cache-control': 'public, max-age=300',
+  ...(init.headers ?? {}),
+});
+
 const jsonResponse = (payload: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(payload, null, 2), {
     ...init,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'public, max-age=300',
-      ...(init.headers ?? {}),
-    },
+    headers: responseHeaders('application/json; charset=utf-8', init),
   });
 
 const textResponse = (body: string, contentType: string, init: ResponseInit = {}) =>
   new Response(body, {
     ...init,
-    headers: {
-      'content-type': contentType,
-      'cache-control': 'public, max-age=300',
-      ...(init.headers ?? {}),
-    },
+    headers: responseHeaders(contentType, init),
+  });
+
+const emptyResponse = (contentType: string, init: ResponseInit = {}) =>
+  new Response(null, {
+    ...init,
+    headers: responseHeaders(contentType, init),
   });
 
 const escapeXml = (value: string) =>
@@ -77,28 +83,38 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === '/api/ai/manifest.json' && request.method === 'GET') {
-      return jsonResponse(buildAiManifestJson());
+    if (path === '/api/ai/manifest.json' && isReadMethod(request.method)) {
+      return request.method === 'HEAD'
+        ? emptyResponse('application/json; charset=utf-8')
+        : jsonResponse(buildAiManifestJson());
     }
 
-    if (path === '/api/ai/tools.yaml' && request.method === 'GET') {
-      return textResponse(buildAiToolsYaml(), 'application/yaml; charset=utf-8');
+    if (path === '/api/ai/tools.yaml' && isReadMethod(request.method)) {
+      return request.method === 'HEAD'
+        ? emptyResponse('application/yaml; charset=utf-8')
+        : textResponse(buildAiToolsYaml(), 'application/yaml; charset=utf-8');
     }
 
-    if (path === '/openapi.json' && request.method === 'GET') {
-      return jsonResponse(buildOpenApiDocument());
+    if (path === '/openapi.json' && isReadMethod(request.method)) {
+      return request.method === 'HEAD'
+        ? emptyResponse('application/json; charset=utf-8')
+        : jsonResponse(buildOpenApiDocument());
     }
 
-    if (path === '/sitemap.xml' && request.method === 'GET') {
-      return textResponse(buildSitemapXml(), 'application/xml; charset=utf-8');
+    if (path === '/sitemap.xml' && isReadMethod(request.method)) {
+      return request.method === 'HEAD'
+        ? emptyResponse('application/xml; charset=utf-8')
+        : textResponse(buildSitemapXml(), 'application/xml; charset=utf-8');
     }
 
-    if (path === '/robots.txt' && request.method === 'GET') {
-      return textResponse(buildRobotsText(), 'text/plain; charset=utf-8');
+    if (path === '/robots.txt' && isReadMethod(request.method)) {
+      return request.method === 'HEAD'
+        ? emptyResponse('text/plain; charset=utf-8')
+        : textResponse(buildRobotsText(), 'text/plain; charset=utf-8');
     }
 
     const schemaMatch = path.match(/^\/api\/tools\/([^/]+)\/([^/]+)\/schema\.(yaml|json)$/);
-    if (schemaMatch && request.method === 'GET') {
+    if (schemaMatch && isReadMethod(request.method)) {
       const [, category, slug, format] = schemaMatch;
       const tool = findAiTool(category, slug);
       if (!tool) {
@@ -106,10 +122,14 @@ export default {
       }
 
       if (format === 'json') {
-        return jsonResponse(buildToolSchemaDocument(tool));
+        return request.method === 'HEAD'
+          ? emptyResponse('application/json; charset=utf-8')
+          : jsonResponse(buildToolSchemaDocument(tool));
       }
 
-      return textResponse(buildToolSchemaYaml(tool), 'application/yaml; charset=utf-8');
+      return request.method === 'HEAD'
+        ? emptyResponse('application/yaml; charset=utf-8')
+        : textResponse(buildToolSchemaYaml(tool), 'application/yaml; charset=utf-8');
     }
 
     const computeMatch = path.match(/^\/api\/tools\/([^/]+)\/([^/]+)\/compute\.(yaml|json)$/);
