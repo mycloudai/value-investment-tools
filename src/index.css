@@ -48,7 +48,7 @@ textarea {
   }
 
   .section-kicker {
-    @apply text-[11px] font-semibold uppercase tracking-[0.22em] text-action;
+    @apply text-[13px] font-semibold uppercase tracking-[0.18em] text-action;
   }
 
   .section-heading {
@@ -68,10 +68,10 @@ textarea {
   }
 
   .panel-title {
-    @apply font-display text-[28px] font-semibold tracking-[-0.03em] text-ink;
+    @apply font-display text-[30px] font-semibold tracking-[-0.03em] text-ink sm:text-[32px];
   }
 
   .metric-card {
-    @apply rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/50;
+    @apply rounded-[24px] border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50;
   }
 }

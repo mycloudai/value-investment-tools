@@ -27,6 +27,55 @@ test('two-stage dcf responds to input changes', async ({ page }) => {
   await expect(page.locator('body')).not.toContainText('NaN');
 });
 
+test('two-stage dcf lets users switch display currency and shows unit reminder', async ({ page }) => {
+  await page.goto('/valuation/dcf-two-stage');
+
+  await expect(page.locator('#tool-inputs')).toContainText('总股数按亿股输入');
+  await page.getByTestId('sidebar-section-currency-toggle').click();
+
+  await expect(page.getByTestId('summary-metric-0')).toContainText('US$');
+
+  await page.getByTestId('currency-option-HKD').click();
+
+  await expect(page.locator('#tool-inputs')).toContainText('港币');
+  await expect(page.getByTestId('summary-metric-0')).toContainText('HK$');
+});
+
+test('tool page sidebar sections are collapsed by default and can expand', async ({ page }) => {
+  await page.goto('/valuation/dcf-two-stage');
+
+  await expect(page.getByTestId('sidebar-section-navigation-content')).toHaveCount(0);
+  await expect(page.getByTestId('sidebar-section-summary-content')).toHaveCount(0);
+
+  await page.getByTestId('sidebar-section-navigation-toggle').click();
+  await expect(page.getByTestId('sidebar-section-navigation-content')).toBeVisible();
+
+  await page.getByTestId('sidebar-section-summary-toggle').click();
+  await expect(page.getByTestId('sidebar-section-summary-content')).toBeVisible();
+});
+
+test('three-stage dcf supports custom stage durations', async ({ page }) => {
+  await page.goto('/valuation/dcf-three-stage');
+
+  const primaryMetric = page.getByTestId('summary-metric-0');
+  const before = await primaryMetric.textContent();
+
+  await page.getByTestId('input-stageOneYears').fill('3');
+  await page.getByTestId('input-stageTwoYears').fill('4');
+
+  await expect(primaryMetric).not.toHaveText(before ?? '');
+  await expect(page.locator('#tool-details')).toContainText('3 年高增长 + 4 年过渡');
+});
+
+test('monte carlo dcf uses configurable projection years', async ({ page }) => {
+  await page.goto('/valuation/dcf-monte-carlo');
+
+  await page.getByTestId('input-projectionYears').fill('7');
+
+  await expect(page.locator('#tool-details')).toContainText('显性预测期');
+  await expect(page.locator('#tool-details')).toContainText('7 年');
+});
+
 test('f-score updates when profitability weakens', async ({ page }) => {
   await page.goto('/health/f-score');
 

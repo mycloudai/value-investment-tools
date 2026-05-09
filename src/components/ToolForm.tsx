@@ -1,10 +1,39 @@
-import type { InputField } from '../lib/toolkit';
+import { currencyLabels, type CurrencyCode, type InputField } from '../lib/toolkit';
 
 interface ToolFormProps {
+  displayCurrency: CurrencyCode;
   fields: InputField[];
   values: Record<string, number | string>;
   onChange: (key: string, value: number | string) => void;
 }
+
+const amountKeyPattern = /(price|cash|fcf|value|income|earnings|dividend|debt|capital|asset|liabilit|equity|sales|revenue|expense|ebit|nopat|market)/i;
+const shareKeyPattern = /(shares|shareCount)/i;
+
+const resolveFieldBadge = (field: InputField, displayCurrency: CurrencyCode) => {
+  if (field.unit === '%') {
+    return '单位：百分比 %';
+  }
+
+  if (field.unit) {
+    return `单位：${field.unit}`;
+  }
+
+  const token = `${field.key} ${field.label}`;
+  if (shareKeyPattern.test(field.key) || /股/.test(token)) {
+    return '单位：股；金额保持同数量级';
+  }
+
+  if (/years/i.test(field.key) || /年/.test(field.label)) {
+    return '单位：年';
+  }
+
+  if (amountKeyPattern.test(field.key) || /(现金|股价|价值|营收|收入|利润|资本|负债|股息|FCF|EV|NOPAT)/.test(token)) {
+    return `货币：${currencyLabels[displayCurrency]}`;
+  }
+
+  return null;
+};
 
 const renderNumericValue = (value: number | string | undefined) => {
   if (typeof value === 'number') {
@@ -15,23 +44,28 @@ const renderNumericValue = (value: number | string | undefined) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export default function ToolForm({ fields, values, onChange }: ToolFormProps) {
+export default function ToolForm({ displayCurrency, fields, values, onChange }: ToolFormProps) {
   return (
     <div className="space-y-5">
-      {fields.map((field) => (
-        <div key={field.key} className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-100">
+      {fields.map((field) => {
+        const badge = resolveFieldBadge(field, displayCurrency);
+
+        return (
+          <div key={field.key} className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-100">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-xl">
-              <label className="text-sm font-semibold text-ink" htmlFor={field.key}>
+              <label className="text-base font-semibold text-ink" htmlFor={field.key}>
                 {field.label}
               </label>
-              <p className="mt-1 text-sm leading-6 text-slate-500">{field.description}</p>
+              <p className="mt-1 text-[15px] leading-6 text-slate-500">{field.description}</p>
             </div>
-            {field.unit ? <span className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-action">{field.unit}</span> : null}
+            {badge ? (
+              <span className="rounded-full bg-mist px-3 py-1 text-sm font-medium text-action">{badge}</span>
+            ) : null}
           </div>
           <div className="mt-4">
             {field.type === 'number' ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <input
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-action focus:ring-2 focus:ring-action/20"
                   data-testid={`input-${field.key}`}
@@ -44,15 +78,10 @@ export default function ToolForm({ fields, values, onChange }: ToolFormProps) {
                   onChange={(event) => onChange(field.key, Number(event.target.value))}
                 />
                 {typeof field.min === 'number' && typeof field.max === 'number' ? (
-                  <input
-                    className="w-full accent-[#0066cc]"
-                    max={field.max}
-                    min={field.min}
-                    step={field.step}
-                    type="range"
-                    value={renderNumericValue(values[field.key])}
-                    onChange={(event) => onChange(field.key, Number(event.target.value))}
-                  />
+                  <p className="text-sm text-slate-400">
+                    建议范围 {field.min} - {field.max}
+                    {field.unit ? field.unit : ''}
+                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -93,8 +122,9 @@ export default function ToolForm({ fields, values, onChange }: ToolFormProps) {
               />
             ) : null}
           </div>
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { CurrencyCode } from '../lib/toolkit';
 
 export interface JournalEntry {
   id: string;
@@ -25,6 +26,7 @@ export interface PortfolioEntry {
 
 interface AppSnapshot {
   toolInputs: Record<string, Record<string, number | string>>;
+  displayCurrency: CurrencyCode;
   apiKey: string;
   cachedFmpData: Record<string, Record<string, unknown>>;
   journalEntries: JournalEntry[];
@@ -34,6 +36,7 @@ interface AppSnapshot {
 interface AppStore extends AppSnapshot {
   setToolField: (toolId: string, key: string, value: number | string) => void;
   replaceToolInputs: (toolId: string, values: Record<string, number | string>) => void;
+  setDisplayCurrency: (currencyCode: CurrencyCode) => void;
   setApiKey: (apiKey: string) => void;
   cacheFmpPayload: (ticker: string, endpoint: string, payload: unknown) => void;
   upsertJournalEntry: (entry: JournalEntry) => void;
@@ -45,6 +48,7 @@ interface AppStore extends AppSnapshot {
 
 const defaultSnapshot: AppSnapshot = {
   toolInputs: {},
+  displayCurrency: 'USD',
   apiKey: '',
   cachedFmpData: {},
   journalEntries: [],
@@ -72,6 +76,7 @@ const useAppStore = create<AppStore>()(
             [toolId]: values,
           },
         })),
+      setDisplayCurrency: (displayCurrency) => set(() => ({ displayCurrency })),
       setApiKey: (apiKey) => set(() => ({ apiKey })),
       cacheFmpPayload: (ticker, endpoint, payload) =>
         set((state) => ({
@@ -112,6 +117,7 @@ const useAppStore = create<AppStore>()(
       importSnapshot: (snapshot) =>
         set((state) => ({
           toolInputs: snapshot.toolInputs ?? state.toolInputs,
+          displayCurrency: snapshot.displayCurrency ?? state.displayCurrency,
           apiKey: snapshot.apiKey ?? state.apiKey,
           cachedFmpData: snapshot.cachedFmpData ?? state.cachedFmpData,
           journalEntries: snapshot.journalEntries ?? state.journalEntries,

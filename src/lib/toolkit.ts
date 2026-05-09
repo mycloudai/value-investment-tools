@@ -130,17 +130,63 @@ export interface CategoryMeta {
   surfaceClass: string;
 }
 
+export type CurrencyCode = 'USD' | 'CNY' | 'HKD';
+
+export interface ToolRuntimeOptions {
+  currencyCode?: CurrencyCode;
+}
+
+export const currencyLabels: Record<CurrencyCode, string> = {
+  USD: '美元',
+  CNY: '人民币',
+  HKD: '港币',
+};
+
+export const currencyOptions: Array<{ value: CurrencyCode; label: string; shortLabel: string }> = [
+  { value: 'USD', label: '美元 USD', shortLabel: 'USD' },
+  { value: 'CNY', label: '人民币 CNY', shortLabel: 'CNY' },
+  { value: 'HKD', label: '港币 HKD', shortLabel: 'HKD' },
+];
+
 const chartColors = ['#0066cc', '#2d8cff', '#7bb8ff', '#113b6d', '#62b1ff'];
 
-const currencyFormatter = new Intl.NumberFormat('zh-CN', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 2,
-});
+const defaultCurrencyCode: CurrencyCode = 'USD';
+const currencyFormatterCache = new Map<CurrencyCode, Intl.NumberFormat>();
+let activeToolRuntime: ToolRuntimeOptions = {
+  currencyCode: defaultCurrencyCode,
+};
 
 const numberFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 2,
 });
+
+const getCurrencyFormatter = (currencyCode: CurrencyCode) => {
+  const cached = currencyFormatterCache.get(currencyCode);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: currencyCode,
+    maximumFractionDigits: 2,
+  });
+  currencyFormatterCache.set(currencyCode, formatter);
+  return formatter;
+};
+
+export const withToolRuntime = <T>(options: ToolRuntimeOptions | undefined, run: () => T) => {
+  const previous = activeToolRuntime;
+  activeToolRuntime = {
+    currencyCode: options?.currencyCode ?? defaultCurrencyCode,
+  };
+
+  try {
+    return run();
+  } finally {
+    activeToolRuntime = previous;
+  }
+};
 
 const asNumber = (values: Record<string, number | string>, key: string) => {
   const value = values[key];
@@ -204,7 +250,7 @@ const safeDivide = (numerator: number, denominator: number) => (denominator === 
 
 const discount = (value: number, rate: number, year: number) => value / (1 + rate) ** year;
 
-const formatCurrency = (value: number) => currencyFormatter.format(value);
+const formatCurrency = (value: number) => getCurrencyFormatter(activeToolRuntime.currencyCode ?? defaultCurrencyCode).format(value);
 
 const formatNumber = (value: number, digits = 2) =>
   Number.isFinite(value) ? Number(value).toFixed(digits) : '0.00';
@@ -396,7 +442,7 @@ const computeTwoStageDcf = (values: Record<string, number | string>): ToolResult
       {
         label: '合理股价',
         value: formatCurrency(model.intrinsicValuePerShare),
-        note: '按默认 5 年高增长 + 永续增长计算',
+        note: `按 ${years} 年显性预测期 + 永续增长计算`,
       },
       {
         label: '相对当前价空间',
@@ -414,6 +460,10 @@ const computeTwoStageDcf = (values: Record<string, number | string>): ToolResult
         label: '权益价值',
         value: formatCurrency(model.equityValue),
         hint: '显性阶段现金流 + 终值现值 + 净现金',
+      },
+      {
+        label: '显性预测期',
+        value: `${years} 年`,
       },
       {
         label: '显性阶段现值',
@@ -461,8 +511,8 @@ const computeTwoStageDcf = (values: Record<string, number | string>): ToolResult
 };
 
 const computeThreeStageDcf = (values: Record<string, number | string>): ToolResult => {
-  const stageOneYears = 5;
-  const stageTwoYears = 5;
+  const stageOneYears = Math.round(asNumber(values, 'stageOneYears'));
+  const stageTwoYears = Math.round(asNumber(values, 'stageTwoYears'));
   const growthOne = asRate(values, 'growthRateHigh');
   const growthTwo = asRate(values, 'growthRateTerminal');
   const fadeRates = Array.from({ length: stageTwoYears }, (_, index) => {
@@ -493,6 +543,7 @@ const computeThreeStageDcf = (values: Record<string, number | string>): ToolResu
       },
     ],
     details: [
+      { label: '阶段长度', value: `${stageOneYears} 年高增长 + ${stageTwoYears} 年过渡` },
       { label: '阶段一现值', value: formatCurrency(stageOneValue) },
       { label: '阶段二现值', value: formatCurrency(stageTwoValue) },
       { label: '终值现值', value: formatCurrency(model.presentTerminalValue) },
@@ -562,7 +613,7 @@ const computeReverseDcf = (values: Record<string, number | string>): ToolResult 
       {
         label: '隐含增长率',
         value: formatPercent(impliedGrowth),
-        note: '使 DCF 等于当前价格所需的 5 年增长率',
+        note: `使 DCF 等于当前价格所需的 ${years} 年显性增长率`,
       },
       {
         label: '与自有预期偏差',
@@ -578,6 +629,7 @@ const computeReverseDcf = (values: Record<string, number | string>): ToolResult 
     details: [
       { label: '当前股价', value: formatCurrency(currentPrice) },
       { label: '目标权益价值', value: formatCurrency(targetEquityValue) },
+      { label: '显性预测期', value: `${years} 年` },
       { label: '你的增长假设', value: formatPercent(expectedGrowth) },
       { label: '折现率 / 永续增长率', value: `${formatPercentPoint(asNumber(values, 'wacc'))} / ${formatPercentPoint(asNumber(values, 'terminalGrowthRate'))}` },
     ],
@@ -599,6 +651,7 @@ const computeReverseDcf = (values: Record<string, number | string>): ToolResult 
 
 const computeMonteCarloDcf = (values: Record<string, number | string>): ToolResult => {
   const iterations = Math.round(asNumber(values, 'iterations'));
+  const projectionYears = Math.round(asNumber(values, 'projectionYears'));
   const growthMean = asRate(values, 'growthMean');
   const growthStd = asRate(values, 'growthStd');
   const waccMean = asRate(values, 'waccMean');
@@ -610,7 +663,7 @@ const computeMonteCarloDcf = (values: Record<string, number | string>): ToolResu
   const results = Array.from({ length: iterations }, () => {
     const growth = clamp(normalSample(growthMean, growthStd), -0.25, 0.35);
     const wacc = clamp(normalSample(waccMean, waccStd), terminalGrowth + 0.03, 0.25);
-    const model = dcfModel(asNumber(values, 'baseFcf'), Array.from({ length: 5 }, () => growth), wacc, terminalGrowth, netCash, shares);
+    const model = dcfModel(asNumber(values, 'baseFcf'), Array.from({ length: projectionYears }, () => growth), wacc, terminalGrowth, netCash, shares);
     return model.intrinsicValuePerShare;
   }).sort((left, right) => left - right);
 
@@ -640,6 +693,7 @@ const computeMonteCarloDcf = (values: Record<string, number | string>): ToolResu
     ],
     details: [
       { label: '模拟次数', value: formatPlain(iterations, 0) },
+      { label: '显性预测期', value: `${projectionYears} 年` },
       { label: '增长率均值 / 波动', value: `${formatPercentPoint(asNumber(values, 'growthMean'))} / ${formatPercentPoint(asNumber(values, 'growthStd'))}` },
       { label: 'WACC 均值 / 波动', value: `${formatPercentPoint(asNumber(values, 'waccMean'))} / ${formatPercentPoint(asNumber(values, 'waccStd'))}` },
       { label: '当前股价', value: formatCurrency(currentPrice) },
@@ -1577,6 +1631,7 @@ const computeScenarioAnalysis = (values: Record<string, number | string>): ToolR
   const baseFcf = asNumber(values, 'baseFcf');
   const netCash = asNumber(values, 'netCash');
   const shares = asNumber(values, 'sharesOutstanding');
+  const years = Math.round(asNumber(values, 'years'));
   const terminalGrowth = asRate(values, 'terminalGrowthRate');
   const currentPrice = asNumber(values, 'currentPrice');
   const scenarios = [
@@ -1585,7 +1640,7 @@ const computeScenarioAnalysis = (values: Record<string, number | string>): ToolR
     ['熊市', asRate(values, 'bearGrowthRate'), asRate(values, 'bearWacc'), 0.2],
   ] as const;
   const rows = scenarios.map(([name, growth, wacc, weight]) => {
-    const model = dcfModel(baseFcf, Array.from({ length: 5 }, () => growth), wacc, terminalGrowth, netCash, shares);
+    const model = dcfModel(baseFcf, Array.from({ length: years }, () => growth), wacc, terminalGrowth, netCash, shares);
     return {
       name,
       weight,
@@ -1601,10 +1656,13 @@ const computeScenarioAnalysis = (values: Record<string, number | string>): ToolR
       { label: '相对现价空间', value: formatPercent(upside), tone: sentiment(upside) },
       { label: '估值区间', value: `${formatCurrency(Math.min(...rows.map((row) => row.value)))} - ${formatCurrency(Math.max(...rows.map((row) => row.value)))}` },
     ],
-    details: rows.map((row) => ({
-      label: `${row.name}场景`,
-      value: `${formatCurrency(row.value)}，权重 ${formatPercent(row.weight)}`,
-    })),
+    details: [
+      { label: '显性预测期', value: `${years} 年` },
+      ...rows.map((row) => ({
+        label: `${row.name}场景`,
+        value: `${formatCurrency(row.value)}，权重 ${formatPercent(row.weight)}`,
+      })),
+    ],
     charts: [
       {
         type: 'bar',
@@ -1621,6 +1679,7 @@ const computeScenarioAnalysis = (values: Record<string, number | string>): ToolR
 const computeSensitivityMatrix = (values: Record<string, number | string>): ToolResult => {
   const baseFcf = asNumber(values, 'baseFcf');
   const growth = asRate(values, 'growthRate');
+  const years = Math.round(asNumber(values, 'years'));
   const netCash = asNumber(values, 'netCash');
   const shares = asNumber(values, 'sharesOutstanding');
   const currentWacc = asNumber(values, 'wacc');
@@ -1631,7 +1690,7 @@ const computeSensitivityMatrix = (values: Record<string, number | string>): Tool
     terminalColumns.map((columnLabel, columnIndex) => {
       const model = dcfModel(
         baseFcf,
-        Array.from({ length: 5 }, () => growth),
+        Array.from({ length: years }, () => growth),
         (currentWacc + (rowIndex - 2)) / 100,
         columnIndex / 100,
         netCash,
@@ -1653,6 +1712,7 @@ const computeSensitivityMatrix = (values: Record<string, number | string>): Tool
       { label: '矩阵最高值', value: formatCurrency(Math.max(...cells.map((cell) => cell.value))) },
     ],
     details: [
+      { label: '显性预测期', value: `${years} 年` },
       { label: 'WACC 中心值', value: formatPercentPoint(currentWacc) },
       { label: '永续增长中心值', value: formatPercentPoint(currentTerminal) },
       { label: '基础 FCF', value: formatCurrency(baseFcf) },
@@ -1915,7 +1975,7 @@ export const toolCatalog: ToolDefinition[] = [
     priority: 'P0',
     tagline: '成熟公司最常用的内在价值锚。',
     purpose: '适合增长稳定、商业模式清晰的成熟公司。它通过显性预测未来现金流，再把长期价值折现回来。',
-    scenario: '当你能对未来 5 年自由现金流有一个大致可信的判断时，这通常是最先使用的估值工具。',
+    scenario: '当你能对显性预测期的自由现金流有一个大致可信的判断时，这通常是最先使用的估值工具。',
     formula: '内在价值 = Σ[FCFt / (1+WACC)^t] + 终值 / (1+WACC)^n；终值 = FCFn × (1+g) / (WACC-g)。',
     variables: [
       { symbol: 'FCF', meaning: '自由现金流', guidance: '优先用经营现金流减资本开支，最好取正常化水平。' },
@@ -1925,13 +1985,13 @@ export const toolCatalog: ToolDefinition[] = [
     limitations: ['对 WACC 和永续增长率高度敏感。', '不适合利润与现金流高度波动的周期股。'],
     fields: [
       numberField('baseFcf', '基准 FCF', 3800, '以相同币种输入，代表最新年度或正常化 FCF。', { min: 100, max: 10000, step: 100, sensitivity: true }),
-      numberField('growthRate', '第一阶段增长率', 10, '未来 5 年的年化 FCF 增长率。', { min: -10, max: 30, unit: '%', sensitivity: true }),
-      numberField('years', '高增长年数', 5, '显性预测年数。', { min: 3, max: 10, step: 1 }),
+      numberField('growthRate', '第一阶段增长率', 10, '显性预测期的年化 FCF 增长率。', { min: -10, max: 30, unit: '%', sensitivity: true }),
+      numberField('years', '第一阶段年数', 5, '显性预测期持续的年数。', { min: 3, max: 10, step: 1 }),
       numberField('terminalGrowthRate', '永续增长率', 2.5, '长期增长率，必须低于 WACC。', { min: 0, max: 4, unit: '%', sensitivity: true }),
       numberField('wacc', 'WACC', 9, '折现率。', { min: 5, max: 15, unit: '%', sensitivity: true }),
-      numberField('netCash', '净现金', 1200, '现金减有息负债。', { min: -5000, max: 5000, step: 100 }),
-      numberField('sharesOutstanding', '总股数', 900, '与股价口径一致。', { min: 100, max: 5000, step: 10 }),
-      numberField('currentPrice', '当前股价', 58, '用于计算上行空间。', { min: 1, max: 500, step: 1 }),
+      numberField('netCash', '净现金', 1200, '现金减有息负债，需与 FCF 保持同币种、同数量级。', { min: -5000, max: 5000, step: 100 }),
+      numberField('sharesOutstanding', '总股数', 900, '请与金额字段保持同一数量级口径，例如都按亿为单位。', { min: 100, max: 5000, step: 10 }),
+      numberField('currentPrice', '当前股价', 58, '用于计算上行空间，币种需与金额字段一致。', { min: 1, max: 500, step: 1 }),
     ],
     sensitivityKeys: ['baseFcf', 'growthRate', 'terminalGrowthRate', 'wacc'],
     compute: computeTwoStageDcf,
@@ -1945,22 +2005,24 @@ export const toolCatalog: ToolDefinition[] = [
     priority: 'P1',
     tagline: '把高增长衰减过程单独建模。',
     purpose: '适合科技股或新兴市场公司，先经历高增长，再逐步衰减到成熟阶段。',
-    scenario: '当你认为未来 5 年之后仍有一段增长下台阶的过渡期，三阶段 DCF 比两阶段更合理。',
+    scenario: '当你认为高增长之后还需要一段过渡期才会走向成熟阶段时，三阶段 DCF 比两阶段更合理。',
     formula: '阶段一保持高增长，阶段二线性衰减至终局增长率，阶段三进入永续增长。',
     variables: [
-      { symbol: 'g1', meaning: '高增长率', guidance: '前 5 年的核心增长率。' },
+      { symbol: 'g1', meaning: '高增长率', guidance: '阶段一的核心增长率。' },
       { symbol: 'g2', meaning: '终局增长率', guidance: '成熟阶段长期增长率，必须低于 WACC。' },
       { symbol: 'WACC', meaning: '折现率', guidance: '与行业风险和资本结构匹配。' },
     ],
     limitations: ['衰减路径属于主观设定。', '对高增长公司的终局竞争格局仍然难以预测。'],
     fields: [
       numberField('baseFcf', '基准 FCF', 2500, '公司当前自由现金流。', { min: 100, max: 10000, step: 100, sensitivity: true }),
-      numberField('growthRateHigh', '阶段一增长率', 16, '前 5 年增长率。', { min: 0, max: 40, unit: '%', sensitivity: true }),
-      numberField('growthRateTerminal', '终局增长率', 3, '第 10 年后进入的长期增长率。', { min: 0, max: 4, unit: '%', sensitivity: true }),
+      numberField('growthRateHigh', '阶段一增长率', 16, '阶段一的年化 FCF 增长率。', { min: 0, max: 40, unit: '%', sensitivity: true }),
+      numberField('stageOneYears', '阶段一年数', 5, '高增长阶段持续的年数。', { min: 2, max: 10, step: 1 }),
+      numberField('stageTwoYears', '阶段二过渡年数', 5, '从高增长逐步衰减到终局增长率的年数。', { min: 2, max: 10, step: 1 }),
+      numberField('growthRateTerminal', '终局增长率', 3, '阶段二结束后进入长期阶段时的增长率。', { min: 0, max: 4, unit: '%', sensitivity: true }),
       numberField('wacc', 'WACC', 10, '折现率。', { min: 5, max: 16, unit: '%', sensitivity: true }),
-      numberField('netCash', '净现金', 900, '现金减有息负债。', { min: -3000, max: 5000, step: 100 }),
-      numberField('sharesOutstanding', '总股数', 700, '股数。', { min: 100, max: 5000, step: 10 }),
-      numberField('currentPrice', '当前股价', 52, '当前市场价格。', { min: 1, max: 500, step: 1 }),
+      numberField('netCash', '净现金', 900, '现金减有息负债，需与 FCF 保持同币种、同数量级。', { min: -3000, max: 5000, step: 100 }),
+      numberField('sharesOutstanding', '总股数', 700, '请与金额字段保持同一数量级口径，例如都按亿为单位。', { min: 100, max: 5000, step: 10 }),
+      numberField('currentPrice', '当前股价', 52, '当前市场价格，币种需与金额字段一致。', { min: 1, max: 500, step: 1 }),
     ],
     sensitivityKeys: ['baseFcf', 'growthRateHigh', 'growthRateTerminal', 'wacc'],
     compute: computeThreeStageDcf,
@@ -1981,7 +2043,7 @@ export const toolCatalog: ToolDefinition[] = [
       { symbol: 'g*', meaning: '隐含增长率', guidance: '反推出来的 5 年增长率。' },
       { symbol: 'WACC', meaning: '折现率', guidance: '不要为了让结果好看而过度调低。' },
     ],
-    limitations: ['默认把前 5 年增长率视为常数。', '无法替代对商业模式的定性判断。'],
+    limitations: ['默认把显性预测期增长率视为常数。', '无法替代对商业模式的定性判断。'],
     fields: [
       numberField('currentPrice', '当前股价', 72, '市场价格。', { min: 1, max: 500, step: 1 }),
       numberField('sharesOutstanding', '总股数', 820, '用于从价格换算到权益价值。', { min: 100, max: 5000, step: 10 }),
@@ -1989,7 +2051,7 @@ export const toolCatalog: ToolDefinition[] = [
       numberField('wacc', 'WACC', 9.5, '折现率。', { min: 5, max: 15, unit: '%' }),
       numberField('terminalGrowthRate', '永续增长率', 2.5, '长期增长率。', { min: 0, max: 4, unit: '%' }),
       numberField('netCash', '净现金', 500, '净现金调整项。', { min: -3000, max: 5000, step: 100 }),
-      numberField('years', '高增长年数', 5, '默认求解 5 年高增长。', { min: 3, max: 10, step: 1 }),
+      numberField('years', '显性预测年数', 5, '求解显性预测期的隐含增长率。', { min: 3, max: 10, step: 1 }),
       numberField('expectedGrowthRate', '你的增长预期', 8, '用来和市场隐含增长率对比。', { min: -5, max: 30, unit: '%' }),
     ],
     sensitivityKeys: ['wacc', 'terminalGrowthRate', 'expectedGrowthRate'],
@@ -2014,14 +2076,15 @@ export const toolCatalog: ToolDefinition[] = [
     limitations: ['分布设定仍然带有主观性。', '随机模拟无法替代对尾部风险的定性判断。'],
     fields: [
       numberField('baseFcf', '基准 FCF', 2600, '当前自由现金流。', { min: 100, max: 10000, step: 100 }),
-      numberField('growthMean', '增长率均值', 11, '未来 5 年增长率中心值。', { min: -5, max: 25, unit: '%' }),
+      numberField('growthMean', '增长率均值', 11, '显性预测期增长率中心值。', { min: -5, max: 25, unit: '%' }),
       numberField('growthStd', '增长率波动', 4, '增长率标准差。', { min: 1, max: 15, unit: '%' }),
       numberField('waccMean', 'WACC 均值', 9.5, '折现率中心值。', { min: 5, max: 15, unit: '%' }),
       numberField('waccStd', 'WACC 波动', 1.2, 'WACC 标准差。', { min: 0.5, max: 4, unit: '%' }),
       numberField('terminalGrowthRate', '永续增长率', 2.5, '终局增长率。', { min: 0, max: 4, unit: '%' }),
-      numberField('sharesOutstanding', '总股数', 760, '总股数。', { min: 100, max: 5000, step: 10 }),
-      numberField('netCash', '净现金', 300, '净现金。', { min: -3000, max: 5000, step: 100 }),
-      numberField('currentPrice', '当前股价', 56, '市场股价。', { min: 1, max: 500, step: 1 }),
+      numberField('projectionYears', '显性预测年数', 5, '每次模拟中显性预测自由现金流的年数。', { min: 3, max: 10, step: 1 }),
+      numberField('sharesOutstanding', '总股数', 760, '请与金额字段保持同一数量级口径，例如都按亿为单位。', { min: 100, max: 5000, step: 10 }),
+      numberField('netCash', '净现金', 300, '净现金，需与 FCF 保持同币种、同数量级。', { min: -3000, max: 5000, step: 100 }),
+      numberField('currentPrice', '当前股价', 56, '市场股价，币种需与金额字段一致。', { min: 1, max: 500, step: 1 }),
       numberField('iterations', '模拟次数', 5000, '次数越高，分布越平滑。', { min: 1000, max: 10000, step: 500 }),
     ],
     sensitivityKeys: ['growthMean', 'growthStd', 'waccMean', 'waccStd'],
@@ -2649,6 +2712,7 @@ export const toolCatalog: ToolDefinition[] = [
     limitations: ['情景权重仍是主观判断。', '情景数增加并不等于更准确。'],
     fields: [
       numberField('baseFcf', '基准 FCF', 2800, '自由现金流。', { min: 100, max: 10000, step: 100 }),
+      numberField('years', '显性预测年数', 5, '每个情景下显性预测自由现金流的年数。', { min: 3, max: 10, step: 1 }),
       numberField('sharesOutstanding', '总股数', 760, '总股数。', { min: 100, max: 5000, step: 10 }),
       numberField('netCash', '净现金', 350, '净现金。', { min: -5000, max: 5000, step: 100 }),
       numberField('terminalGrowthRate', '永续增长率', 2.5, '长期增长率。', { min: 0, max: 4, unit: '%' }),
@@ -2681,7 +2745,8 @@ export const toolCatalog: ToolDefinition[] = [
     limitations: ['仍然建立在 FCF 基础假设之上。', '对极端假设给出的结果不应机械相信。'],
     fields: [
       numberField('baseFcf', '基准 FCF', 2600, '自由现金流。', { min: 100, max: 10000, step: 100 }),
-      numberField('growthRate', '显性阶段增长率', 10, '前 5 年增长率。', { min: -5, max: 25, unit: '%' }),
+      numberField('growthRate', '显性阶段增长率', 10, '显性预测期增长率。', { min: -5, max: 25, unit: '%' }),
+      numberField('years', '显性预测年数', 5, '热力矩阵中每次 DCF 估值使用的显性预测年数。', { min: 3, max: 10, step: 1 }),
       numberField('netCash', '净现金', 400, '净现金。', { min: -5000, max: 5000, step: 100 }),
       numberField('sharesOutstanding', '总股数', 720, '总股数。', { min: 100, max: 5000, step: 10 }),
       numberField('wacc', '中心 WACC', 9.5, '热力矩阵中心 WACC。', { min: 5, max: 15, unit: '%', sensitivity: true }),

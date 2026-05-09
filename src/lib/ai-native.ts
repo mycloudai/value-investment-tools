@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import { categoryMeta, getDefaultValues, toolCatalog, type InputField, type ToolDefinition } from './toolkit';
+import { categoryMeta, getDefaultValues, toolCatalog, type InputField, type ToolDefinition, withToolRuntime } from './toolkit';
 
 export const PUBLIC_BASE_URL = 'https://value-investment-tools.mycloudai.org';
 
@@ -176,7 +176,8 @@ export const computeToolPayload = (tool: ToolDefinition, payload: unknown) => {
   }
 
   const { values, warnings } = normalizeToolInputs(tool, payload);
-  const result = tool.compute(values);
+  const compute = tool.compute;
+  const result = withToolRuntime(undefined, () => compute(values));
 
   return {
     kind: `${AI_KIND_PREFIX}.tool-result`,

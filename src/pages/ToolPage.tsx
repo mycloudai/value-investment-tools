@@ -1,11 +1,114 @@
-import { Download, RotateCcw, Save } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, RotateCcw, Save } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import ChartRenderer from '../components/ChartRenderer';
 import ToolForm from '../components/ToolForm';
-import { findTool, getDefaultValues, toolsByCategory } from '../lib/toolkit';
+import { currencyLabels, currencyOptions, findTool, getDefaultValues, toolsByCategory, type CurrencyCode, type InputField, withToolRuntime } from '../lib/toolkit';
 import type { PortfolioEntry, JournalEntry } from '../store/useAppStore';
 import useAppStore from '../store/useAppStore';
+
+const amountFieldPattern = /(price|cash|fcf|value|income|earnings|dividend|debt|capital|asset|liabilit|equity|sales|revenue|expense|ebit|nopat|market)/i;
+const shareFieldPattern = /(shares|shareCount)/i;
+type SidebarSectionKey = 'navigation' | 'currency' | 'summary' | 'related';
+
+const defaultSidebarSections: Record<SidebarSectionKey, boolean> = {
+  navigation: false,
+  currency: false,
+  summary: false,
+  related: false,
+};
+
+const currencyFormatterCache = new Map<CurrencyCode, Intl.NumberFormat>();
+
+const isAmountLikeField = (field: InputField) => amountFieldPattern.test(field.key) || /(现金|股价|价值|营收|收入|利润|资本|负债|股息|FCF|EV|NOPAT)/.test(`${field.key} ${field.label}`);
+
+const isShareLikeField = (field: InputField) => shareFieldPattern.test(field.key) || /股/.test(`${field.key} ${field.label}`);
+
+const getCurrencyFormatter = (currencyCode: CurrencyCode) => {
+  const cached = currencyFormatterCache.get(currencyCode);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: currencyCode,
+    maximumFractionDigits: 2,
+  });
+  currencyFormatterCache.set(currencyCode, formatter);
+  return formatter;
+};
+
+const formatDisplayCurrency = (value: number, currencyCode: CurrencyCode) => getCurrencyFormatter(currencyCode).format(value);
+
+function DisplayCurrencySelector({
+  displayCurrency,
+  setDisplayCurrency,
+}: {
+  displayCurrency: CurrencyCode;
+  setDisplayCurrency: (currencyCode: CurrencyCode) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      {currencyOptions.map((option) => (
+        <button
+          key={option.value}
+          className={`rounded-[18px] px-4 py-3 text-left transition ${
+            option.value === displayCurrency ? 'bg-action text-white' : 'bg-slate-50 text-slate-700 hover:bg-mist hover:text-action'
+          }`}
+          data-testid={`currency-option-${option.value}`}
+          type="button"
+          onClick={() => setDisplayCurrency(option.value)}
+        >
+          <p className="text-sm font-semibold">{option.shortLabel}</p>
+          <p className={`mt-1 text-sm ${option.value === displayCurrency ? 'text-white/80' : 'text-slate-500'}`}>{option.label}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CollapsibleSidebarSection({
+  bodyTestId,
+  headerTestId,
+  isOpen,
+  kicker,
+  title,
+  onToggle,
+  children,
+}: {
+  bodyTestId: string;
+  headerTestId: string;
+  isOpen: boolean;
+  kicker: string;
+  title: string;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="metric-card space-y-0 p-0">
+      <button
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+        data-testid={headerTestId}
+        type="button"
+        onClick={onToggle}
+      >
+        <div>
+          <p className="section-kicker">{kicker}</p>
+          <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.03em] text-ink">{title}</h2>
+        </div>
+        <span className="rounded-full bg-slate-100 p-2 text-slate-500">
+          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </span>
+      </button>
+      {isOpen ? (
+        <div className="border-t border-slate-200 px-5 pb-5 pt-4" data-testid={bodyTestId}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const downloadTextFile = (filename: string, text: string, type: string) => {
   const blob = new Blob([text], { type });
@@ -46,6 +149,8 @@ const portfolioTemplate: Omit<PortfolioEntry, 'id' | 'updatedAt'> = {
 };
 
 function JournalWorkbench() {
+  const displayCurrency = useAppStore((state) => state.displayCurrency);
+  const setDisplayCurrency = useAppStore((state) => state.setDisplayCurrency);
   const journalEntries = useAppStore((state) => state.journalEntries);
   const upsertJournalEntry = useAppStore((state) => state.upsertJournalEntry);
   const deleteJournalEntry = useAppStore((state) => state.deleteJournalEntry);
@@ -75,6 +180,7 @@ function JournalWorkbench() {
           <p className="section-kicker text-sky">Investment Journal</p>
           <h1 className="mt-3 font-display text-5xl font-semibold tracking-[-0.05em]">投资论点日志</h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-300">把代码、买入价、核心论点、关键假设、主要风险和卖出条件记录下来。这里用 localStorage 保存，支持 CSV 导出。</p>
+          <p className="mt-3 text-sm leading-6 text-slate-400">当前金额显示按 {currencyLabels[displayCurrency]} 展示，切换时只改变符号，不做汇率换算。</p>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
@@ -89,8 +195,9 @@ function JournalWorkbench() {
                 清空
               </button>
             </div>
+            <DisplayCurrencySelector displayCurrency={displayCurrency} setDisplayCurrency={setDisplayCurrency} />
             <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="代码，例如 AAPL" type="text" value={draft.ticker} onChange={(event) => setDraft((state) => ({ ...state, ticker: event.target.value }))} />
-            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="买入价" type="number" value={draft.buyPrice} onChange={(event) => setDraft((state) => ({ ...state, buyPrice: Number(event.target.value) }))} />
+            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder={`买入价（${currencyLabels[displayCurrency]}）`} type="number" value={draft.buyPrice} onChange={(event) => setDraft((state) => ({ ...state, buyPrice: Number(event.target.value) }))} />
             <textarea className="min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="核心论点" value={draft.thesis} onChange={(event) => setDraft((state) => ({ ...state, thesis: event.target.value }))} />
             <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="关键假设" value={draft.assumptions} onChange={(event) => setDraft((state) => ({ ...state, assumptions: event.target.value }))} />
             <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="主要风险" value={draft.risks} onChange={(event) => setDraft((state) => ({ ...state, risks: event.target.value }))} />
@@ -141,7 +248,7 @@ function JournalWorkbench() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-action">{entry.ticker}</p>
-                        <h3 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-ink">买入价 {entry.buyPrice}</h3>
+                        <h3 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-ink">买入价 {formatDisplayCurrency(entry.buyPrice, displayCurrency)}</h3>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -188,6 +295,8 @@ function JournalWorkbench() {
 }
 
 function PortfolioWorkbench() {
+  const displayCurrency = useAppStore((state) => state.displayCurrency);
+  const setDisplayCurrency = useAppStore((state) => state.setDisplayCurrency);
   const portfolioEntries = useAppStore((state) => state.portfolioEntries);
   const upsertPortfolioEntry = useAppStore((state) => state.upsertPortfolioEntry);
   const deletePortfolioEntry = useAppStore((state) => state.deletePortfolioEntry);
@@ -234,6 +343,7 @@ function PortfolioWorkbench() {
           <p className="section-kicker text-sky">Portfolio Tracker</p>
           <h1 className="mt-3 font-display text-5xl font-semibold tracking-[-0.05em]">持仓追踪器</h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-300">把持仓成本、现价和内在价值估算放到一个表里，持续跟踪组合盈亏与安全边际。</p>
+          <p className="mt-3 text-sm leading-6 text-slate-400">当前金额显示按 {currencyLabels[displayCurrency]} 展示，切换时只改变符号，不做汇率换算。</p>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -248,11 +358,12 @@ function PortfolioWorkbench() {
                 清空
               </button>
             </div>
+            <DisplayCurrencySelector displayCurrency={displayCurrency} setDisplayCurrency={setDisplayCurrency} />
             <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="代码，例如 NVDA" type="text" value={draft.ticker} onChange={(event) => setDraft((state) => ({ ...state, ticker: event.target.value }))} />
             <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="股数" type="number" value={draft.shares} onChange={(event) => setDraft((state) => ({ ...state, shares: Number(event.target.value) }))} />
-            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="买入价" type="number" value={draft.buyPrice} onChange={(event) => setDraft((state) => ({ ...state, buyPrice: Number(event.target.value) }))} />
-            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="当前价" type="number" value={draft.currentPrice} onChange={(event) => setDraft((state) => ({ ...state, currentPrice: Number(event.target.value) }))} />
-            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="最新内在价值估算" type="number" value={draft.intrinsicValue} onChange={(event) => setDraft((state) => ({ ...state, intrinsicValue: Number(event.target.value) }))} />
+            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder={`买入价（${currencyLabels[displayCurrency]}）`} type="number" value={draft.buyPrice} onChange={(event) => setDraft((state) => ({ ...state, buyPrice: Number(event.target.value) }))} />
+            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder={`当前价（${currencyLabels[displayCurrency]}）`} type="number" value={draft.currentPrice} onChange={(event) => setDraft((state) => ({ ...state, currentPrice: Number(event.target.value) }))} />
+            <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder={`最新内在价值估算（${currencyLabels[displayCurrency]}）`} type="number" value={draft.intrinsicValue} onChange={(event) => setDraft((state) => ({ ...state, intrinsicValue: Number(event.target.value) }))} />
             <button className="pill-button w-full justify-center" type="button" onClick={handleSave}>
               <Save className="mr-2 h-4 w-4" />
               {editingId ? '更新持仓' : '保存持仓'}
@@ -263,7 +374,7 @@ function PortfolioWorkbench() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="metric-card">
                 <p className="text-sm text-slate-500">组合市值</p>
-                <p className="mt-2 font-display text-4xl font-semibold tracking-[-0.04em] text-ink">{summary.marketValue.toFixed(0)}</p>
+                <p className="mt-2 font-display text-4xl font-semibold tracking-[-0.04em] text-ink">{formatDisplayCurrency(summary.marketValue, displayCurrency)}</p>
               </div>
               <div className="metric-card">
                 <p className="text-sm text-slate-500">组合盈亏</p>
@@ -341,15 +452,19 @@ function PortfolioWorkbench() {
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           <div>
                             <p className="text-sm text-slate-500">买入价</p>
-                            <p className="mt-1 text-lg font-semibold text-ink">{entry.buyPrice}</p>
+                            <p className="mt-1 text-lg font-semibold text-ink">{formatDisplayCurrency(entry.buyPrice, displayCurrency)}</p>
                           </div>
                           <div>
                             <p className="text-sm text-slate-500">当前价</p>
-                            <p className="mt-1 text-lg font-semibold text-ink">{entry.currentPrice}</p>
+                            <p className="mt-1 text-lg font-semibold text-ink">{formatDisplayCurrency(entry.currentPrice, displayCurrency)}</p>
                           </div>
                           <div>
                             <p className="text-sm text-slate-500">盈亏</p>
                             <p className={`mt-1 text-lg font-semibold ${pnl >= 0 ? 'text-action' : 'text-rose-600'}`}>{(pnl * 100).toFixed(1)}%</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">内在价值</p>
+                            <p className="mt-1 text-lg font-semibold text-ink">{formatDisplayCurrency(entry.intrinsicValue, displayCurrency)}</p>
                           </div>
                           <div>
                             <p className="text-sm text-slate-500">安全边际</p>
@@ -376,8 +491,11 @@ export default function ToolPage() {
   const tool = findTool(category, slug);
   const setToolField = useAppStore((state) => state.setToolField);
   const replaceToolInputs = useAppStore((state) => state.replaceToolInputs);
+  const displayCurrency = useAppStore((state) => state.displayCurrency);
+  const setDisplayCurrency = useAppStore((state) => state.setDisplayCurrency);
   const toolValues = useAppStore((state) => (tool ? state.toolInputs[tool.id] : undefined));
   const [downloadState, setDownloadState] = useState('');
+  const [sidebarSections, setSidebarSections] = useState(defaultSidebarSections);
 
   if (!tool) {
     return <Navigate replace to="/" />;
@@ -396,16 +514,25 @@ export default function ToolPage() {
     ...defaults,
     ...(toolValues ?? {}),
   };
-  const result = tool.compute ? tool.compute(values) : null;
+  const compute = tool.compute;
+  const result = compute ? withToolRuntime({ currencyCode: displayCurrency }, () => compute(values)) : null;
   const categoryInfo = toolsByCategory.find((group) => group.category === tool.category);
   const relatedTools = categoryInfo?.tools ?? [];
   const pageAnchors = [
-    { label: '用途与公式', href: '#tool-foundation' },
-    { label: '输入区', href: '#tool-inputs' },
-    { label: '结果区', href: '#tool-results' },
-    { label: '计算明细', href: '#tool-details' },
-    { label: '局限与解释', href: '#tool-insights' },
+    { label: '先看用途', href: '#tool-foundation' },
+    { label: '输入参数', href: '#tool-inputs' },
+    { label: '结论与图表', href: '#tool-results' },
+    { label: '关键拆解', href: '#tool-details' },
+    { label: '敏感度与结论', href: '#tool-insights' },
   ];
+  const hasAmountFields = tool.fields.some(isAmountLikeField);
+  const hasShareFields = tool.fields.some(isShareLikeField);
+  const toggleSidebarSection = (key: SidebarSectionKey) => {
+    setSidebarSections((state) => ({
+      ...state,
+      [key]: !state[key],
+    }));
+  };
 
   return (
     <main className="py-16">
@@ -433,35 +560,70 @@ export default function ToolPage() {
           </div>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+        <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="space-y-4 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:self-start xl:overflow-y-auto xl:pr-1">
+            <CollapsibleSidebarSection
+              bodyTestId="sidebar-section-navigation-content"
+              headerTestId="sidebar-section-navigation-toggle"
+              isOpen={sidebarSections.navigation}
+              kicker="页面导航"
+              title="直接跳到要看的区域"
+              onToggle={() => toggleSidebarSection('navigation')}
+            >
+              <div className="space-y-2">
+                {pageAnchors.map((anchor) => (
+                  <a key={anchor.href} className="block rounded-[18px] bg-slate-50 px-4 py-3 text-base text-slate-700 transition hover:bg-mist hover:text-action" href={anchor.href}>
+                    {anchor.label}
+                  </a>
+                ))}
+              </div>
+            </CollapsibleSidebarSection>
+
+            <CollapsibleSidebarSection
+              bodyTestId="sidebar-section-currency-content"
+              headerTestId="sidebar-section-currency-toggle"
+              isOpen={sidebarSections.currency}
+              kicker="金额显示"
+              title="切换展示货币"
+              onToggle={() => toggleSidebarSection('currency')}
+            >
+              <DisplayCurrencySelector displayCurrency={displayCurrency} setDisplayCurrency={setDisplayCurrency} />
+              <p className="mt-4 text-sm leading-6 text-slate-500">只切换展示符号，不自动做汇率换算。输入数字会按你当前选定的币种来解释。</p>
+            </CollapsibleSidebarSection>
+
             {result ? (
-              <div className="metric-card space-y-4">
-                <div>
-                  <p className="section-kicker">即看结果</p>
-                  <h2 className="panel-title mt-2">不用先滚到图表区</h2>
-                </div>
+              <CollapsibleSidebarSection
+                bodyTestId="sidebar-section-summary-content"
+                headerTestId="sidebar-section-summary-toggle"
+                isOpen={sidebarSections.summary}
+                kicker="先看结论"
+                title="先抓住 3 个核心数字"
+                onToggle={() => toggleSidebarSection('summary')}
+              >
                 <div className="space-y-3">
                   {result.summary.slice(0, 3).map((metric) => (
-                    <div key={metric.label} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm text-slate-500">{metric.label}</p>
-                      <p className="mt-2 text-lg font-semibold text-ink">{metric.value}</p>
+                    <div key={metric.label} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-base text-slate-500">{metric.label}</p>
+                      <p className="mt-2 text-xl font-semibold text-ink">{metric.value}</p>
                     </div>
                   ))}
                 </div>
-              </div>
+              </CollapsibleSidebarSection>
             ) : null}
 
-            <div className="metric-card space-y-4">
-              <div>
-                <p className="section-kicker">同类工具</p>
-                <h2 className="panel-title mt-2">在这个分类里切换</h2>
-              </div>
+            <CollapsibleSidebarSection
+              bodyTestId="sidebar-section-related-content"
+              headerTestId="sidebar-section-related-toggle"
+              isOpen={sidebarSections.related}
+              kicker="相关工具"
+              title="按同类问题快速切换"
+              onToggle={() => toggleSidebarSection('related')}
+            >
               <div className="space-y-2">
                 {relatedTools.map((relatedTool) => (
                   <Link
                     key={relatedTool.id}
-                    className={`block rounded-[20px] px-4 py-3 text-sm transition ${
+                    className={`block rounded-[18px] px-4 py-3 text-base transition ${
                       relatedTool.id === tool.id ? 'bg-action text-white' : 'bg-slate-50 text-slate-700 hover:bg-mist hover:text-action'
                     }`}
                     to={relatedTool.route}
@@ -470,40 +632,28 @@ export default function ToolPage() {
                   </Link>
                 ))}
               </div>
-            </div>
-
-            <div className="metric-card space-y-4">
-              <div>
-                <p className="section-kicker">页面导览</p>
-                <h2 className="panel-title mt-2">快速跳到对应区域</h2>
-              </div>
-              <div className="space-y-2">
-                {pageAnchors.map((anchor) => (
-                  <a key={anchor.href} className="block rounded-[20px] bg-slate-50 px-4 py-3 text-sm text-slate-700 transition hover:bg-mist hover:text-action" href={anchor.href}>
-                    {anchor.label}
-                  </a>
-                ))}
-              </div>
-            </div>
+            </CollapsibleSidebarSection>
           </aside>
 
           <div className="space-y-6">
-            <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" id="tool-foundation">
-              <div className="metric-card space-y-4">
-                <div>
-                  <p className="section-kicker">用途</p>
-                  <h2 className="panel-title mt-2">这项工具适合什么时候用</h2>
-                </div>
-                <p className="body-copy">{tool.purpose}</p>
-                <div>
-                  <p className="section-kicker">公式</p>
-                  <p className="mt-2 text-base leading-7 text-slate-700">{tool.formula}</p>
+            <section className="metric-card space-y-6" id="tool-foundation">
+              <div>
+                <p className="section-kicker">先看用途</p>
+                <h2 className="panel-title mt-2">这项工具适合回答什么问题</h2>
+              </div>
+              <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                <div className="space-y-4">
+                  <p className="body-copy">{tool.purpose}</p>
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                    <p className="section-kicker">公式框架</p>
+                    <p className="mt-3 text-base leading-7 text-slate-700">{tool.formula}</p>
+                  </div>
                 </div>
                 {tool.variables.length ? (
                   <div className="space-y-3">
                     {tool.variables.map((variable) => (
                       <div key={variable.symbol} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-sm font-semibold text-ink">{variable.symbol}</p>
+                        <p className="text-base font-semibold text-ink">{variable.symbol}</p>
                         <p className="mt-1 text-sm text-slate-700">{variable.meaning}</p>
                         <p className="mt-1 text-sm text-slate-500">{variable.guidance}</p>
                       </div>
@@ -511,56 +661,64 @@ export default function ToolPage() {
                   </div>
                 ) : null}
               </div>
+            </section>
 
-              <div className="metric-card" id="tool-inputs">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="section-kicker">输入区</p>
-                    <h2 className="panel-title mt-2">数字可直接输入，也可拖拽敏感参数</h2>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => {
-                        replaceToolInputs(tool.id, defaults);
-                        setDownloadState('已恢复默认参数。');
-                      }}
-                    >
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      恢复默认
-                    </button>
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => {
-                        downloadTextFile(`${tool.slug}-inputs.json`, JSON.stringify(values, null, 2), 'application/json');
-                        setDownloadState('已导出当前输入。');
-                      }}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      导出输入
-                    </button>
-                  </div>
+            <section className="metric-card" id="tool-inputs">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="section-kicker">输入参数</p>
+                  <h2 className="panel-title mt-2">先统一口径，再录入关键假设</h2>
                 </div>
-                <div className="mt-6">
-                  <ToolForm fields={tool.fields} values={values} onChange={(key, value) => setToolField(tool.id, key, value)} />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => {
+                      replaceToolInputs(tool.id, defaults);
+                      setDownloadState('已恢复默认参数。');
+                    }}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    恢复默认
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => {
+                      downloadTextFile(`${tool.slug}-inputs.json`, JSON.stringify(values, null, 2), 'application/json');
+                      setDownloadState('已导出当前输入。');
+                    }}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    导出输入
+                  </button>
                 </div>
-                {downloadState ? <p className="mt-4 text-sm text-slate-500">{downloadState}</p> : null}
               </div>
+              <div className="mt-6 space-y-5">
+                <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5">
+                  <p className="text-base font-semibold text-amber-950">先统一币种与数量级</p>
+                  <p className="mt-2 text-sm leading-7 text-amber-900">
+                    当前页面按 {currencyLabels[displayCurrency]} 显示金额符号。这个切换只影响展示，不会自动换算汇率。
+                    {hasAmountFields ? ' 所有金额字段都要使用同一币种。' : ''}
+                    {hasShareFields ? ' 例如：总股数按亿股输入，FCF、净现金等相关金额字段也必须按同一数量级输入。' : ''}
+                  </p>
+                </div>
+                <ToolForm displayCurrency={displayCurrency} fields={tool.fields} values={values} onChange={(key, value) => setToolField(tool.id, key, value)} />
+              </div>
+              {downloadState ? <p className="mt-4 text-sm text-slate-500">{downloadState}</p> : null}
             </section>
 
             {result ? (
               <>
                 <section className="space-y-6" id="tool-results">
                   <div>
-                    <p className="section-kicker">结果区</p>
-                    <h2 className="section-heading mt-2">核心数字与图表</h2>
+                    <p className="section-kicker">结论与图表</p>
+                    <h2 className="section-heading mt-2">先看结论，再展开验证图表</h2>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {result.summary.map((metric, index) => (
                       <div key={metric.label} className="metric-card" data-testid={`summary-metric-${index}`}>
-                        <p className="text-sm text-slate-500">{metric.label}</p>
+                        <p className="text-base text-slate-500">{metric.label}</p>
                         <p
                           className={`mt-3 font-display text-4xl font-semibold tracking-[-0.04em] ${
                             metric.tone === 'positive' ? 'text-action' : metric.tone === 'negative' ? 'text-rose-600' : 'text-ink'
@@ -582,8 +740,8 @@ export default function ToolPage() {
                 <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" id="tool-details">
                   <div className="metric-card space-y-4">
                     <div>
-                      <p className="section-kicker">计算明细</p>
-                      <h2 className="panel-title mt-2">逐步展示推导过程</h2>
+                      <p className="section-kicker">关键拆解</p>
+                      <h2 className="panel-title mt-2">把最影响结果的数字逐项核对</h2>
                     </div>
                     <div className="space-y-3">
                       {result.details.map((item) => (
@@ -602,7 +760,7 @@ export default function ToolPage() {
                     <div className="metric-card space-y-4">
                       <div>
                         <p className="section-kicker">敏感度</p>
-                        <h2 className="panel-title mt-2">实时拖动关键参数</h2>
+                        <h2 className="panel-title mt-2">只拖最影响结果的参数</h2>
                       </div>
                       <div className="space-y-5">
                         {tool.fields
@@ -628,8 +786,8 @@ export default function ToolPage() {
                     </div>
                     <div className="metric-card space-y-4">
                       <div>
-                        <p className="section-kicker">结论</p>
-                        <h2 className="panel-title mt-2">解释与局限</h2>
+                        <p className="section-kicker">如何解读</p>
+                        <h2 className="panel-title mt-2">先理解结论，再看局限</h2>
                       </div>
                       <p className="body-copy">{result.narrative}</p>
                       <div className="space-y-3">
